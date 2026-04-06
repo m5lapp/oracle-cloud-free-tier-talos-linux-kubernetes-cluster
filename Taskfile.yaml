@@ -1,0 +1,35 @@
+version: '3'
+
+dotenv:
+- '.env'
+
+tasks:
+  clean:
+    ignore_error: true
+    cmds:
+    - cmd: rm compute/config/{controlplane,worker}.yaml
+    - cmd: rm compute/config/kubeconfig
+    - cmd: rm compute/config/talosconfig
+    - cmd: rm compute/images/*/*.{gcow2,oci}
+
+  destroy:
+    preconditions:
+    - sh: test -n "{{.TARGET}}"
+      msg: "The TARGET variable is required, e.g. TARGET=module.compute"
+    cmds:
+    - terraform plan --destroy --out .tfplan --target "{{.TARGET}}"
+
+  destroy-all:
+    cmds:
+    - terraform plan --destroy --out .tfplan
+
+  plan:
+    cmds:
+    - terraform init
+    - terraform plan --out .tfplan
+
+  apply:
+    cmds:
+    - terraform fmt --recursive
+    - terraform apply .tfplan
+

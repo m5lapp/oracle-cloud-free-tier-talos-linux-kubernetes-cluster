@@ -1,0 +1,13 @@
+.DS_Store
+.env
+.tfplan
+*.hcl
+*.info
+*.terraform
+*.tfstate
+*.tfstate.backup
+certs/
+compute/config/
+compute/images/
+compute/patches/
+

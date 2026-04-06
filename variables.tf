@@ -1,0 +1,115 @@
+variable "compartment_id" {
+  description = "OCI Compartment ID"
+  type        = string
+}
+
+variable "fingerprint" {
+  description = "The fingerprint of the key to use for signing"
+  type        = string
+}
+
+variable "private_key_path" {
+  description = "The path to the private key to use for signing"
+  type        = string
+}
+
+variable "region" {
+  description = "The region to connect to. Default: uk-london-1"
+  type        = string
+  default     = "uk-london-1"
+}
+
+variable "ssh_authorized_keys" {
+  description = "List of authorized SSH keys"
+  type        = list(string)
+}
+
+variable "tenancy_ocid" {
+  description = "The tenancy OCID."
+  type        = string
+}
+
+variable "user_ocid" {
+  description = "The user OCID."
+  type        = string
+}
+
+variable "dns_label" {
+  description = "A descriptive DNS name for the cluster network, e.g. 'prod'"
+  type        = string
+  default     = "prod"
+
+  validation {
+    condition     = can(regex("^[A-Za-z][A-Za-z0-9]{1,48}$", var.dns_label))
+    error_message = "Must be a 1 to 48 character alphanumeric string that begins with a letter"
+  }
+}
+
+variable "port_kubectl" {
+  description = "The TCP port number to use for kubectl"
+  type        = number
+  default     = 6443
+
+  validation {
+    condition     = var.port_kubectl > 0 && var.port_kubectl <= 65535
+    error_message = "Must be a valid TCP port number"
+  }
+}
+
+variable "port_talosctl" {
+  description = "The TCP port number to use for Talos' API server"
+  type        = number
+  default     = 50000
+
+  validation {
+    condition     = var.port_talosctl > 0 && var.port_talosctl <= 65535
+    error_message = "Must be a valid TCP port number"
+  }
+}
+
+variable "ports_additional" {
+  description = "Additional ports to allow ingress traffic from on the internet"
+  type = list(object({
+    protocol = string,
+    port     = number,
+  }))
+  default = [
+    { protocol = "TCP", port = 80, },
+    { protocol = "TCP", port = 443 },
+  ]
+
+  validation {
+    condition = alltrue([
+      for p in var.ports_additional :
+      (p.port > 0 && p.port <= 65535) &&
+      contains(["ICMP", "ICMPv6", "TCP", "UDP"], p.protocol)
+    ])
+    error_message = "Must contain only valid port numbers and protocols"
+  }
+}
+
+variable "rfc1918_cidr_block" {
+  # https://www.rfc-editor.org/rfc/rfc1918
+  description = "The RFC 1918 private IP address space to use for VCN"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "subnet_private_cidr" {
+  description = "The IP subnet within the rfc1918_cidr_block to use for the private subnet"
+  type        = string
+  default     = "10.0.1.0/24"
+}
+
+variable "subnet_public_cidr" {
+  description = "The IP subnet within the rfc1918_cidr_block to use for the public subnet"
+  type        = string
+  default     = "10.0.0.0/24"
+}
+
+variable "talos_version" {
+  type        = string
+  description = "The version of Talos Linux to install. It's recommended to pin this to avoid future version bumps in this project causing issues"
+  default     = "1.12.6"
+}
+
