@@ -1,7 +1,12 @@
 resource "oci_network_load_balancer_network_load_balancer" "cluster_nlb" {
   compartment_id = var.compartment_id
-  subnet_id      = oci_core_subnet.public_subnet.id
-  display_name   = "cluster-${var.dns_label}-network-load-balancer"
+  depends_on = [
+    oci_core_network_security_group.nsg_nlb,
+    oci_core_subnet.public_subnet,
+  ]
+
+  subnet_id    = oci_core_subnet.public_subnet.id
+  display_name = "cluster-${var.dns_label}-network-load-balancer"
 
   # Give the load balancer a public IP address.
   is_private = false
@@ -9,6 +14,8 @@ resource "oci_network_load_balancer_network_load_balancer" "cluster_nlb" {
   # about routing responses back out to clients, they will automatically go via
   # the network load balancer.
   is_preserve_source_destination = false
+
+  network_security_group_ids = [oci_core_network_security_group.nsg_nlb.id]
 }
 
 resource "oci_network_load_balancer_backend_set" "backend_kubectl" {

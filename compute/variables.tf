@@ -46,6 +46,16 @@ variable "nlb_public_ip" {
   description = "The public IP address of the cluster network load balancer"
 }
 
+variable "nsg_control_plane_id" {
+  description = "The Network Security Groups for private subnet members"
+  type        = string
+}
+
+variable "nsg_worker_id" {
+  description = "The Network Security Groups for public subnet members"
+  type        = string
+}
+
 variable "port_kubectl" {
   description = "The TCP port number to use for kubectl"
   type        = number
@@ -79,20 +89,10 @@ variable "subnet_private_id" {
   type        = string
 }
 
-variable "subnet_private_nsgs" {
-  description = "The Network Security Groups for private subnet members"
-  type        = list(string)
-}
-
 variable "subnet_public_cidr" {
   description = "The IP subnet within the rfc1918_cidr_block to use for the public subnet"
   type        = string
   default     = "10.0.0.0/24"
-}
-
-variable "subnet_public_nsgs" {
-  description = "The Network Security Groups for public subnet members"
-  type        = list(string)
 }
 
 variable "talos_version" {

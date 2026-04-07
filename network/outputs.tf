@@ -18,21 +18,18 @@ output "nlb_public_ip" {
   value       = oci_network_load_balancer_network_load_balancer.cluster_nlb.ip_addresses[0].ip_address
 }
 
+output "nsg_control_plane_id" {
+  description = "The Network Security Group for cluster control plane nodes"
+  value       = oci_core_network_security_group.nsg_control_plane.id
+}
+
+output "nsg_worker_id" {
+  description = "The Network Security Group for cluster worker nodes"
+  value       = oci_core_network_security_group.nsg_worker.id
+}
+
 output "subnet_private_id" {
   description = "The ID of the private subnet within the rfc1918_cidr_block"
   value       = oci_core_subnet.private_subnet.id
-}
-
-output "subnet_private_nsgs" {
-  description = "The Network Security Groups for public subnet members"
-  value = [
-    oci_core_security_list.allow_all_egress.id,
-    oci_core_security_list.subnet_private_security_list.id,
-  ]
-}
-
-output "subnet_public_nsgs" {
-  description = "The Network Security Groups for public subnet members"
-  value       = [oci_core_security_list.subnet_public_security_list.id]
 }
 

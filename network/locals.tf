@@ -6,11 +6,13 @@ locals {
     "ICMPv6" = 58,
   })
 
+  ports_control_plane = [
+    { protocol = "TCP", port = var.port_kubectl },
+    { protocol = "TCP", port = var.port_talosctl },
+  ]
+
   ports_ingress = concat(
-    [
-      { protocol = "TCP", port = var.port_kubectl },
-      { protocol = "TCP", port = var.port_talosctl },
-    ],
+    local.ports_control_plane,
     var.ports_additional,
   )
 }

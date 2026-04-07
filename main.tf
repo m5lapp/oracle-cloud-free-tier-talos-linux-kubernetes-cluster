@@ -2,7 +2,7 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = ">= 8.5.0"
+      version = ">= 8.8.0"
     }
   }
 
@@ -35,19 +35,19 @@ module "compute" {
     oci = oci
   }
 
-  compartment_id      = var.compartment_id
-  dns_label           = var.dns_label
-  nlb_id              = module.network.nlb_id
-  nlb_public_ip       = module.network.nlb_public_ip
-  port_kubectl        = var.port_kubectl
-  port_talosctl       = var.port_talosctl
-  subnet_private_cidr = var.subnet_private_cidr
-  subnet_private_id   = module.network.subnet_private_id
-  subnet_private_nsgs = module.network.subnet_private_nsgs
-  subnet_public_cidr  = var.subnet_private_cidr
-  subnet_public_nsgs  = module.network.subnet_public_nsgs
-  talos_version       = var.talos_version
-  tenancy_ocid        = var.tenancy_ocid
+  compartment_id       = var.compartment_id
+  dns_label            = var.dns_label
+  nlb_id               = module.network.nlb_id
+  nlb_public_ip        = module.network.nlb_public_ip
+  nsg_control_plane_id = module.network.nsg_control_plane_id
+  nsg_worker_id        = module.network.nsg_worker_id
+  port_kubectl         = var.port_kubectl
+  port_talosctl        = var.port_talosctl
+  subnet_private_cidr  = var.subnet_private_cidr
+  subnet_private_id    = module.network.subnet_private_id
+  subnet_public_cidr   = var.subnet_private_cidr
+  talos_version        = var.talos_version
+  tenancy_ocid         = var.tenancy_ocid
 
   nlb_backend_set_name_kubectl  = module.network.nlb_backend_set_name_kubectl
   nlb_backend_set_name_talosctl = module.network.nlb_backend_set_name_talosctl

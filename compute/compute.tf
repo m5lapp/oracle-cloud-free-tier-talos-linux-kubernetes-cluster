@@ -60,7 +60,8 @@ resource "null_resource" "machine_config" {
 }
 
 data "local_file" "talos_control_plane_config" {
-  filename = "${path.module}/config/controlplane.yaml"
+  depends_on = [null_resource.machine_config]
+  filename   = "${path.module}/config/controlplane.yaml"
 }
 
 data "oci_identity_availability_domains" "ads" {
@@ -68,6 +69,7 @@ data "oci_identity_availability_domains" "ads" {
 }
 
 resource "oci_core_instance" "talos_instance_control_plane" {
+  depends_on     = [data.local_file.talos_control_plane_config]
   count          = local.instance_config_control_plane.count
   compartment_id = var.compartment_id
 
@@ -96,7 +98,7 @@ resource "oci_core_instance" "talos_instance_control_plane" {
       count.index + local.instance_config_control_plane.ip_offset
     )
     assign_public_ip = false
-    # nsg_ids          = var.subnet_private_nsgs
+    nsg_ids          = [var.nsg_control_plane_id]
   }
 
   launch_options {
