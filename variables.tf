@@ -113,3 +113,13 @@ variable "talos_version" {
   default     = "1.12.6"
 }
 
+# Instances using the VM.Standard.E2.1.Micro shape can only be created in a
+# single availability domain within a region (for instance, in the London
+# region, they MUST go in DhmS:UK-LONDON-1-AD-2). This is a limitation enforced
+# by OCI.
+variable "worker_availability_domain" {
+  description = "The availability domain number into which workers should be placed"
+  type        = number
+  default     = 2
+}
+

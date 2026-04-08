@@ -106,3 +106,9 @@ variable "tenancy_ocid" {
   type        = string
 }
 
+variable "worker_availability_domain" {
+  description = "The availability domain number into which workers should be placed"
+  type        = number
+  default     = 2
+}
+

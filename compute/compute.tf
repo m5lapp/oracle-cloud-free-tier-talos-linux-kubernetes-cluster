@@ -64,6 +64,11 @@ data "local_file" "talos_control_plane_config" {
   filename   = "${path.module}/config/controlplane.yaml"
 }
 
+data "local_file" "talos_worker_config" {
+  depends_on = [null_resource.machine_config]
+  filename   = "${path.module}/config/worker.yaml"
+}
+
 data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
 }
@@ -131,9 +136,72 @@ resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_ta
   target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
 }
 
+resource "oci_core_instance" "talos_instance_worker" {
+  depends_on     = [data.local_file.talos_worker_config]
+  count          = local.instance_config_worker.count
+  compartment_id = var.compartment_id
+
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[
+    local.instance_config_worker.availability_domain - 1
+  ].name
+  display_name = "worker-${count.index}"
+  shape        = local.instance_config_worker.shape
+
+  source_details {
+    source_id               = oci_core_image.talos_custom_image["worker"].id
+    source_type             = "image"
+    boot_volume_size_in_gbs = 50
+  }
+
+  shape_config {
+    memory_in_gbs = local.instance_config_worker.ram
+    ocpus         = local.instance_config_worker.ocpus
+  }
+
+  create_vnic_details {
+    subnet_id = var.subnet_private_id
+    private_ip = cidrhost(
+      var.subnet_private_cidr,
+      count.index + local.instance_config_worker.ip_offset
+    )
+    assign_public_ip = false
+    nsg_ids          = [var.nsg_worker_id]
+  }
+
+  launch_options {
+    network_type = "PARAVIRTUALIZED"
+  }
+
+  metadata = {
+    "user_data" = base64encode(data.local_file.talos_worker_config.content)
+  }
+
+  lifecycle {
+    # TODO: UPDATE THIS.
+    prevent_destroy = false
+  }
+}
+
+# resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_kubectl" {
+#   count                    = length(oci_core_instance.talos_instance_control_plane)
+#   network_load_balancer_id = var.nlb_id
+#   backend_set_name         = var.nlb_backend_set_name_kubectl
+#   port                     = var.port_kubectl
+#   target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
+# }
+#
+# resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_talosctl" {
+#   count                    = length(oci_core_instance.talos_instance_control_plane)
+#   network_load_balancer_id = var.nlb_id
+#   backend_set_name         = var.nlb_backend_set_name_talosctl
+#   port                     = var.port_talosctl
+#   target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
+# }
+
 resource "null_resource" "bootstrap_cluster" {
   depends_on = [
     oci_core_instance.talos_instance_control_plane,
+    oci_core_instance.talos_instance_worker,
     oci_network_load_balancer_backend.add_instance_to_nlb_backend_set_talosctl,
   ]
 
@@ -149,7 +217,7 @@ resource "null_resource" "bootstrap_cluster" {
     interpreter = ["/usr/bin/env", "bash", "-c"]
     command     = <<EOT
       talosctl --talosconfig ${path.module}/config/talosconfig config \
-          nodes ${join(" ", [for i in oci_core_instance.talos_instance_control_plane : i.private_ip])}
+          nodes ${join(" ", [for i in concat(oci_core_instance.talos_instance_control_plane, oci_core_instance.talos_instance_worker) : i.private_ip])}
     EOT
   }
 
@@ -170,8 +238,8 @@ resource "null_resource" "bootstrap_cluster" {
     EOT
   }
 
-  triggers = {
-    always_run = timestamp()
-  }
+  # Once the cluster is successfully bootstrapped the first time, it does not
+  # need to be done again.
+  triggers = {}
 }
 
