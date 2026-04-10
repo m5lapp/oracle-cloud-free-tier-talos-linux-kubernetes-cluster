@@ -10,12 +10,14 @@ locals {
     "TCP_${var.port_kubectl}" = {
       protocol     = "TCP",
       port         = var.port_kubectl,
-      backend_port = var.port_kubectl
+      backend_port = var.port_kubectl,
+      source_cidr  = var.control_plane_source_cidr
     },
     "TCP_${var.port_talosctl}" = {
       protocol     = "TCP",
       port         = var.port_talosctl,
-      backend_port = var.port_talosctl
+      backend_port = var.port_talosctl,
+      source_cidr  = var.control_plane_source_cidr
     },
   })
 

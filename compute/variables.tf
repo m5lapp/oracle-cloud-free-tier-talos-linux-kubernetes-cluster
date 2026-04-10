@@ -90,6 +90,11 @@ variable "subnet_private_cidr" {
   description = "The IP subnet within the rfc1918_cidr_block to use for the private subnet"
   type        = string
   default     = "10.0.1.0/24"
+
+  validation {
+    condition     = can(cidrhost(var.subnet_private_cidr, 0))
+    error_message = "Must be a valid IP CIDR range"
+  }
 }
 
 variable "subnet_private_id" {
@@ -101,6 +106,11 @@ variable "subnet_public_cidr" {
   description = "The IP subnet within the rfc1918_cidr_block to use for the public subnet"
   type        = string
   default     = "10.0.0.0/24"
+
+  validation {
+    condition     = can(cidrhost(var.subnet_public_cidr, 0))
+    error_message = "Must be a valid IP CIDR range"
+  }
 }
 
 variable "talos_version" {
