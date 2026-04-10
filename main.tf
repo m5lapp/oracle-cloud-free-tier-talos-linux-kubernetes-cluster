@@ -51,6 +51,7 @@ module "compute" {
 
   nlb_backend_set_name_kubectl  = module.network.nlb_backend_set_name_kubectl
   nlb_backend_set_name_talosctl = module.network.nlb_backend_set_name_talosctl
+  nlb_backend_sets_additional   = module.network.nlb_backend_sets_additional
   worker_availability_domain    = var.worker_availability_domain
 }
 

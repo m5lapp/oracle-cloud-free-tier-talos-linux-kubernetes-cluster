@@ -120,22 +120,6 @@ resource "oci_core_instance" "talos_instance_control_plane" {
   }
 }
 
-resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_kubectl" {
-  count                    = length(oci_core_instance.talos_instance_control_plane)
-  network_load_balancer_id = var.nlb_id
-  backend_set_name         = var.nlb_backend_set_name_kubectl
-  port                     = var.port_kubectl
-  target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
-}
-
-resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_talosctl" {
-  count                    = length(oci_core_instance.talos_instance_control_plane)
-  network_load_balancer_id = var.nlb_id
-  backend_set_name         = var.nlb_backend_set_name_talosctl
-  port                     = var.port_talosctl
-  target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
-}
-
 resource "oci_core_instance" "talos_instance_worker" {
   depends_on     = [data.local_file.talos_worker_config]
   count          = local.instance_config_worker.count
@@ -182,21 +166,64 @@ resource "oci_core_instance" "talos_instance_worker" {
   }
 }
 
-# resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_kubectl" {
-#   count                    = length(oci_core_instance.talos_instance_control_plane)
-#   network_load_balancer_id = var.nlb_id
-#   backend_set_name         = var.nlb_backend_set_name_kubectl
-#   port                     = var.port_kubectl
-#   target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
-# }
-#
-# resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_talosctl" {
-#   count                    = length(oci_core_instance.talos_instance_control_plane)
-#   network_load_balancer_id = var.nlb_id
-#   backend_set_name         = var.nlb_backend_set_name_talosctl
-#   port                     = var.port_talosctl
-#   target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
-# }
+resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_kubectl" {
+  count                    = length(oci_core_instance.talos_instance_control_plane)
+  network_load_balancer_id = var.nlb_id
+  backend_set_name         = var.nlb_backend_set_name_kubectl
+  port                     = var.port_kubectl
+  target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
+}
+
+resource "oci_network_load_balancer_backend" "add_instance_to_nlb_backend_set_talosctl" {
+  count                    = length(oci_core_instance.talos_instance_control_plane)
+  network_load_balancer_id = var.nlb_id
+  backend_set_name         = var.nlb_backend_set_name_talosctl
+  port                     = var.port_talosctl
+  target_id                = oci_core_instance.talos_instance_control_plane[count.index].id
+}
+
+# This is a bit messy, but we need to add every instance to every load balancer
+# backend set for the additional ports. Therefore, the for_each here creates the
+# cartesian product of keys/indexes of these two things which we can then use to
+# reference the desired values for each pair of things. We need to do this here
+# for the control plane instances and then again below for the worker ones.
+resource "oci_network_load_balancer_backend" "add_instance_cp_to_nlb_backend_additional" {
+  for_each = {
+    for pair in setproduct(
+      keys(var.nlb_backend_sets_additional),
+      toset(range(length(oci_core_instance.talos_instance_control_plane)))
+    ) : "${var.nlb_backend_sets_additional[pair[0]].backend_set_name}-control-plane-${pair[1]}"
+    => {
+      backend_port     = var.nlb_backend_sets_additional[pair[0]].backend_port
+      backend_set_name = var.nlb_backend_sets_additional[pair[0]].backend_set_name
+      instance_id      = oci_core_instance.talos_instance_control_plane[pair[1]].id
+    }
+  }
+
+  network_load_balancer_id = var.nlb_id
+  backend_set_name         = each.value.backend_set_name
+  port                     = each.value.backend_port
+  target_id                = each.value.instance_id
+}
+
+resource "oci_network_load_balancer_backend" "add_instance_worker_to_nlb_backend_additional" {
+  for_each = {
+    for pair in setproduct(
+      keys(var.nlb_backend_sets_additional),
+      toset(range(length(oci_core_instance.talos_instance_worker)))
+    ) : "${var.nlb_backend_sets_additional[pair[0]].backend_set_name}-worker-${pair[1]}"
+    => {
+      backend_port     = var.nlb_backend_sets_additional[pair[0]].backend_port
+      backend_set_name = var.nlb_backend_sets_additional[pair[0]].backend_set_name
+      instance_id      = oci_core_instance.talos_instance_worker[pair[1]].id
+    }
+  }
+
+  network_load_balancer_id = var.nlb_id
+  backend_set_name         = each.value.backend_set_name
+  port                     = each.value.backend_port
+  target_id                = each.value.instance_id
+}
 
 resource "null_resource" "bootstrap_cluster" {
   depends_on = [

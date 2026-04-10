@@ -8,6 +8,17 @@ output "nlb_backend_set_name_talosctl" {
   value       = oci_network_load_balancer_backend_set.backend_talosctl.name
 }
 
+output "nlb_backend_sets_additional" {
+  description = "Additional network load balancer backend sets for ingress"
+  value = tomap({
+    for key, value in oci_network_load_balancer_backend_set.backend_additional :
+    key => tomap({
+      backend_port     = value.health_checker[0].port
+      backend_set_name = value.name
+    })
+  })
+}
+
 output "nlb_id" {
   description = "The resource ID of the cluster network load balancer"
   value       = oci_network_load_balancer_network_load_balancer.cluster_nlb.id

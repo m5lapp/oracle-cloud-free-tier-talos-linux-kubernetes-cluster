@@ -36,6 +36,14 @@ variable "nlb_backend_set_name_talosctl" {
   type        = string
 }
 
+variable "nlb_backend_sets_additional" {
+  description = "Additional network load balancer backend sets for ingress"
+  type = map(object({
+    backend_set_name = string,
+    backend_port     = number,
+  }))
+}
+
 variable "nlb_id" {
   type        = string
   description = "The resource ID of the cluster network load balancer"

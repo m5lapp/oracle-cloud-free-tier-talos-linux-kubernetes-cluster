@@ -39,18 +39,20 @@ variable "port_talosctl" {
 variable "ports_additional" {
   description = "Additional ports to allow ingress traffic from on the internet"
   type = list(object({
-    protocol = string,
-    port     = number,
+    protocol     = string,
+    port         = number,
+    backend_port = number,
   }))
   default = [
-    { protocol = "TCP", port = 80, },
-    { protocol = "TCP", port = 443 },
+    { protocol = "TCP", port = 80, backend_port = 30080 },
+    { protocol = "TCP", port = 443, backend_port = 30443 },
   ]
 
   validation {
     condition = alltrue([
       for p in var.ports_additional :
       (p.port > 0 && p.port <= 65535) &&
+      (p.backend_port > 0 && p.backend_port <= 65535) &&
       contains(["ICMP", "ICMPv6", "TCP", "UDP"], p.protocol)
     ])
     error_message = "Must contain only valid port numbers and protocols from [ICMP, ICMPv6, TCP, UDP]"

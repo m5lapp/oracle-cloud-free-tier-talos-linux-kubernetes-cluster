@@ -38,9 +38,7 @@ resource "oci_core_network_security_group" "nsg_nlb" {
 }
 
 resource "oci_core_network_security_group_security_rule" "nlb_ingress" {
-  for_each = tomap({
-    for port in local.ports_ingress : "${port.protocol}_${port.port}" => port
-  })
+  for_each = local.ports_all
 
   network_security_group_id = oci_core_network_security_group.nsg_nlb.id
   direction                 = "INGRESS"
@@ -73,9 +71,7 @@ resource "oci_core_network_security_group_security_rule" "control_plane_egress" 
 }
 
 resource "oci_core_network_security_group_security_rule" "control_plane_ingress_from_nlb" {
-  for_each = tomap({
-    for port in local.ports_ingress : "${port.protocol}_${port.port}" => port
-  })
+  for_each = local.ports_all
 
   network_security_group_id = oci_core_network_security_group.nsg_control_plane.id
   direction                 = "INGRESS"
@@ -85,8 +81,8 @@ resource "oci_core_network_security_group_security_rule" "control_plane_ingress_
 
   tcp_options {
     destination_port_range {
-      min = each.value.port
-      max = each.value.port
+      min = each.value.backend_port
+      max = each.value.backend_port
     }
   }
 }
@@ -117,9 +113,7 @@ resource "oci_core_network_security_group_security_rule" "worker_egress" {
 }
 
 resource "oci_core_network_security_group_security_rule" "worker_ingress_from_nlb" {
-  for_each = tomap({
-    for port in var.ports_additional : "${port.protocol}_${port.port}" => port
-  })
+  for_each = local.ports_additional
 
   network_security_group_id = oci_core_network_security_group.nsg_worker.id
   direction                 = "INGRESS"
@@ -129,8 +123,8 @@ resource "oci_core_network_security_group_security_rule" "worker_ingress_from_nl
 
   tcp_options {
     destination_port_range {
-      min = each.value.port
-      max = each.value.port
+      min = each.value.backend_port
+      max = each.value.backend_port
     }
   }
 }

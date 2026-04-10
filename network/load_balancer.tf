@@ -52,6 +52,23 @@ resource "oci_network_load_balancer_backend_set" "backend_talosctl" {
   }
 }
 
+resource "oci_network_load_balancer_backend_set" "backend_additional" {
+  for_each                 = local.ports_additional
+  network_load_balancer_id = oci_network_load_balancer_network_load_balancer.cluster_nlb.id
+  name                     = "${each.key}-backend-set"
+
+  # Use just the destination and source IPs for load balancing.
+  policy             = "TWO_TUPLE"
+  is_preserve_source = false
+
+  health_checker {
+    protocol           = each.value.protocol
+    port               = each.value.backend_port
+    interval_in_millis = 10000
+    timeout_in_millis  = 3000
+  }
+}
+
 resource "oci_network_load_balancer_listener" "listener_kubectl" {
   network_load_balancer_id = oci_network_load_balancer_network_load_balancer.cluster_nlb.id
   default_backend_set_name = oci_network_load_balancer_backend_set.backend_kubectl.name
@@ -68,5 +85,16 @@ resource "oci_network_load_balancer_listener" "listener_talosctl" {
 
   port     = var.port_talosctl
   protocol = "TCP"
+}
+
+resource "oci_network_load_balancer_listener" "listener_additional" {
+  for_each = local.ports_additional
+
+  network_load_balancer_id = oci_network_load_balancer_network_load_balancer.cluster_nlb.id
+  default_backend_set_name = oci_network_load_balancer_backend_set.backend_additional[each.key].name
+  name                     = "backend-port-${each.value.protocol}-${each.value.backend_port}"
+
+  port     = each.value.port
+  protocol = each.value.protocol
 }
 
