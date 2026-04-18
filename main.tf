@@ -57,7 +57,6 @@ module "compute" {
   port_talosctl                        = var.port_talosctl
   subnet_private_cidr                  = var.subnet_private_cidr
   subnet_private_id                    = module.network.subnet_private_id
-  subnet_public_cidr                   = var.subnet_private_cidr
   talos_version                        = var.talos_version
   tenancy_ocid                         = var.tenancy_ocid
   worker_availability_domain           = var.worker_availability_domain
