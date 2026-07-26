@@ -105,7 +105,7 @@ variable "subnet_private_id" {
 variable "talos_version" {
   type        = string
   description = "The version of Talos to install. It's recommended to pin this to avoid future version bumps in this project causing issues"
-  default     = "1.12.6"
+  default     = "1.13.7"
 }
 
 variable "tenancy_ocid" {
@@ -115,6 +115,12 @@ variable "tenancy_ocid" {
 
 variable "worker_availability_domain" {
   description = "The availability domain number into which workers should be placed"
+  type        = number
+  default     = 2
+}
+
+variable "worker_count" {
+  description = "The number of worker nodes to create"
   type        = number
   default     = 2
 }

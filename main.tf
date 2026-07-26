@@ -60,5 +60,6 @@ module "compute" {
   talos_version                        = var.talos_version
   tenancy_ocid                         = var.tenancy_ocid
   worker_availability_domain           = var.worker_availability_domain
+  worker_count                         = var.worker_count
 }
 
