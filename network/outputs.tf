@@ -1,3 +1,8 @@
+output "nat_gateway_ip" {
+  description = "The public IP address associated with the NAT gateway"
+  value       = oci_core_nat_gateway.private_subnet_nat_gateway.nat_ip
+}
+
 output "nlb_backend_set_name_kubectl" {
   description = "The name of the network load balancer backend set for kubectl"
   value       = oci_network_load_balancer_backend_set.backend_kubectl.name
