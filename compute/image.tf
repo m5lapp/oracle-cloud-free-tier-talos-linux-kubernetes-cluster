@@ -121,6 +121,68 @@ resource "null_resource" "talos_oci_image_upload" {
   }
 }
 
+# As we have to use a null_resource to upload the talos images to the bucket
+# rather than an oci_objectstorage_object resource due to the size of the
+# objects, we must similarly have a null_resource that runs on destroy to remove
+# all the image objects from the bucket before the bucket can be deleted.
+resource "null_resource" "oci_bucket_cleanup" {
+  depends_on = [
+    oci_objectstorage_bucket.instance_images,
+    null_resource.talos_oci_image_upload,
+  ]
+
+  # Store the external references in triggers so they are saved in Terraform's
+  # state and accessible to the provisioner at destroy time.
+  triggers = {
+    oci_bucket_name = oci_objectstorage_bucket.instance_images.name
+    oci_namespace   = data.oci_objectstorage_namespace.default_bucket_namespace.namespace
+  }
+
+  provisioner "local-exec" {
+    when = destroy
+    environment = {
+      OCI_BUCKET_NAME = self.triggers.oci_bucket_name
+      OCI_NAMESPACE   = self.triggers.oci_namespace
+    }
+    interpreter = ["/usr/bin/env", "bash", "-c"]
+    command     = <<-EOT
+      echo "Cleaning up all objects in bucket $${OCI_BUCKET_NAME}..."
+
+      # Find all objects in the bucket with the prefix "talos-".
+      OBJECT_NAMES=$(
+        oci os object list \
+          --namespace "$${OCI_NAMESPACE}" \
+          --bucket-name "$${OCI_BUCKET_NAME}" \
+          --prefix "talos-" \
+          --output json 2>/dev/null \
+        | grep '"name": "' \
+        | cut -d '"' -f 4
+      )
+
+      if test -z "$${OBJECT_NAMES}"; then
+        echo "No objects found matching prefix 'talos-'."
+        exit 0
+      fi
+
+      echo "$${OBJECT_NAMES}" | while read OBJECT_NAME; do
+        if [ -n "$${OBJECT_NAME}" ]; then
+          echo "Deleting object: $${OBJECT_NAME}"
+          oci os object delete \
+            --namespace "$${OCI_NAMESPACE}" \
+            --bucket-name "$${OCI_BUCKET_NAME}" \
+            --name "$${OBJECT_NAME}" \
+            --force
+        fi
+      done
+
+      # Wait briefly for eventual consistency.
+      sleep 3
+
+      echo "Bucket cleanup complete."
+    EOT
+  }
+}
+
 resource "oci_core_image" "talos_custom_image" {
   for_each   = local.instances
   depends_on = [null_resource.talos_oci_image_upload]
