@@ -27,12 +27,10 @@ resource "oci_network_load_balancer_backend_set" "backend_kubectl" {
   is_preserve_source = false
 
   health_checker {
-    protocol           = "HTTPS"
+    protocol           = "TCP"
     port               = var.port_kubectl
     interval_in_millis = 10000
     timeout_in_millis  = 3000
-    return_code        = 401
-    url_path           = "/readyz"
   }
 }
 
