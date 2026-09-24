@@ -2,67 +2,120 @@
 
 ## Installation
 
-The free-tier, four-node cluster does not really have sufficient resources available to run a service mesh like Cilium or Istio. Particularly it seems to struggle with a lack of CPU resources. [Linkerd](https://linkerd.io/2.14/features/automatic-mtls/#operational-concerns) however is much more lightweight and works really well.
+The free-tier, four-node cluster does not really have sufficient resources available to run a service mesh like Cilium or Istio. Particularly it seems to struggle with a lack of CPU resources. [Linkerd](https://linkerd.io/2-edge/features/) however is much more lightweight and works really well.
 
 IMPORTANT: When running on Talos, Linkerd works best using the [Linkerd CNI plugin](https://linkerd.io/docs/features/cni/). This allows Linkerd to configure the networking on each node that it needs to without having to allow every Pod on the mesh to run with elevated privileges. In order to be able to use the CNI plugin, the `siderolabs/util-linux-tools` Talos extension must be installed on your Talos nodes as that supplies the `nsenter` binary that is required by the CNI. This extension is included by default in this project, see the main [README.md](../README.md) for more informaion on this.
 
-As per the [Linkerd documentation](https://linkerd.io/2.14/features/automatic-mtls/#operational-concerns), the default installation requires the trust anchor and cluster issuer certificate and key to be [manually rotated](https://linkerd.io/2.14/tasks/manually-rotating-control-plane-tls-credentials/) every year. It therefore might be preferable to install Linkerd with a longer-lasting, manually-created trust anchor certificate and [use Cert Manager](https://linkerd.io/2.14/tasks/automatically-rotating-control-plane-tls-credentials/) to rotate the cluster issuer certificate and key. The installation process therefore is as follows:
+As per the [Linkerd documentation](https://linkerd.io/2-edge/features/automatic-mtls/#operational-concerns), the default installation requires the trust anchor and cluster issuer certificate and key to be [manually rotated](https://linkerd.io/2-edge/tasks/manually-rotating-control-plane-tls-credentials/) every year. It therefore is preferable to [install Linkerd with a trust anchor certificate created and managed by cert-manager](https://linkerd.io/2-edge/tasks/automatically-rotating-control-plane-tls-credentials/) as well as rotate the cluster issuer certificate and key. The installation process therefore is as follows:
 
-1. Install Cert Manager as described in the [ingress documentation](ingress.md)
-1. Install the [step-cli](https://smallstep.com/docs/step-cli/installation/) tool for generating the required certificates
-1. Create the linkerd namespace: `kubectl create namespace linkerd`
-1. Generate the trust anchor key pair (valid here for ten years) and save them into a Kubernetes Secret:
-   ```sh
-   mkdir certs/
-
-   step certificate create root.linkerd.cluster.local certs/ca.crt certs/ca.key \
-       --profile root-ca --no-password --insecure --not-after 87600h
-
-   kubectl create secret tls linkerd-trust-anchor \
-       --cert certs/ca.crt --key certs/ca.key --namespace linkerd
+1. Install cert-manager and trust-manager as described in the [ingress documentation](ingress.md)
+1. Create the linkerd namespace:
+   ```yaml
+   kind: Namespace
+   apiVersion: v1
+   metadata:
+     name: linkerd
+     annotations:
+       linkerd.io/inject: disabled
+     labels:
+       linkerd.io/is-control-plane: "true"
+       config.linkerd.io/admission-webhooks: disabled
+       linkerd.io/control-plane-ns: linkerd
+       pod-security.kubernetes.io/enforce: privileged
    ```
-1. Create a Cert Manager Issuer that references the new Secret:
-   ```sh
-   kubectl apply -f - <<EOF
-     apiVersion: cert-manager.io/v1
-     kind: Issuer
-     metadata:
-       name: linkerd-trust-anchor
-       namespace: linkerd
-     spec:
-       ca:
-         secretName: linkerd-trust-anchor
-   EOF
+1. If you did not already create it as part of the cert-manager installation, create yourself a self-signed Issuer for signing certificates:
+   ```yaml
+   apiVersion: cert-manager.io/v1
+   kind: Issuer
+   metadata:
+     name: example-com-bootstrap-issuer
+     namespace: cert-manager
+   spec:
+     selfSigned: {}
    ```
-1. Create a Cert Manager Certificate that references the new Issuer and check that the identity issuer certificate then gets created successfully
-   ```sh
-   kubectl apply -f - <<EOF
-     apiVersion: cert-manager.io/v1
-     kind: Certificate
-     metadata:
+1. Generate the trust anchor key pair (valid here for one year) and save it into a Kubernetes Secret:
+   ```yaml
+   apiVersion: cert-manager.io/v1
+   kind: Certificate
+   metadata:
+     name: linkerd-trust-anchor
+     namespace: cert-manager
+   spec:
+     issuerRef:
+       kind: Issuer
+       name: example-com-bootstrap-issuer
+     secretName: linkerd-trust-anchor
+     isCA: true
+     commonName: "root.linkerd.cluster.local"
+     duration: 8760h0m0s
+     renewBefore: 7320h0m0s
+     privateKey:
+       rotationPolicy: Always
+       algorithm: ECDSA
+   ```
+1. Create a Cert Manager ClusterIssuer that references the new linkerd-trust-anchor Secret:
+   ```yaml
+   apiVersion: cert-manager.io/v1
+   kind: ClusterIssuer
+   metadata:
+     name: linkerd-identity-issuer
+     namespace: linkerd
+   spec:
+     ca:
+       secretName: linkerd-trust-anchor
+   ```
+1. Create a cert-manager Certificate that references the new ClusterIssuer and check that the identity issuer certificate then gets created successfully:
+   ```yaml
+   apiVersion: cert-manager.io/v1
+   kind: Certificate
+   metadata:
+     name: linkerd-identity-issuer
+     namespace: linkerd
+   spec:
+     secretName: linkerd-identity-issuer
+     duration: 48h0m0s
+     renewBefore: 25h0m0s
+     issuerRef:
+       kind: ClusterIssuer
        name: linkerd-identity-issuer
-       namespace: linkerd
-     spec:
-       secretName: linkerd-identity-issuer
-       duration: 48h
-       renewBefore: 25h
-       issuerRef:
-         name: linkerd-trust-anchor
-         kind: Issuer
-       commonName: identity.linkerd.cluster.local
-       dnsNames:
-       - identity.linkerd.cluster.local
-       isCA: true
-       privateKey:
-         algorithm: ECDSA
-       usages:
-       - cert sign
-       - crl sign
-       - server auth
-       - client auth
-   EOF
-
+     commonName: "identity.linkerd.cluster.local"
+     dnsNames:
+     - "identity.linkerd.cluster.local"
+     isCA: true
+     privateKey:
+       rotationPolicy: Always
+       algorithm: ECDSA
+     usages:
+     - cert sign
+     - crl sign
+     - server auth
+     - client auth
+   ```
+   ```sh
    kubectl get secret -n linkerd linkerd-identity-issuer -o yaml
+   ```
+1. Create a trust-manager Bundle resource to pull the trust anchor certificate from the cert-manager namespace where it was created into the linkerd namespace:
+   ```yaml
+   apiVersion: trust.cert-manager.io/v1alpha1
+   kind: Bundle
+   metadata:
+     name: linkerd-identity-trust-roots
+   spec:
+     sources:
+     - secret:
+         name: "linkerd-trust-anchor"
+         key: "tls.crt"
+     # You will require this in the future for trust anchor renewals. See the
+     # linked Linkerd documentation for more information.
+     # - secret:
+     #     name: "linkerd-previous-anchor"
+     #     key: "tls.crt"
+     target:
+       configMap:
+         key: "ca-bundle.crt"
+       namespaceSelector:
+         matchLabels:
+           linkerd.io/is-control-plane: "true"
    ```
 1. [Install](https://linkerd.io/docs/getting-started/#step-1-install-the-cli) the Linkerd CLI
     1. Set up command completion if desired with `linkerd completion bash > /etc/bash_completion.d/linkerd`. Note that you may need to use `sudo` to run this
@@ -74,10 +127,15 @@ As per the [Linkerd documentation](https://linkerd.io/2.14/features/automatic-mt
 1. Install the Linkerd CRDs and then the control plane making sure to pass the `--identity-external-issuer` flag so that it uses the Cert Manager-managed Secrets. Again, a warning will be printed out due to the linkerd namespace already existing, but everything should work OK
    ```sh
    linkerd install --crds | kubectl apply -f -
-   linkerd install --identity-external-issuer --linkerd-cni-enabled | kubectl apply -f -
+   linkerd install \
+       --set identity.externalCA=true \
+       --set identity.issuer.scheme=kubernetes.io/tls \
+       --linkerd-cni-enabled \
+   | kubectl apply -f -
    ```
 1. Check the installation with `linkerd check`. As the issuer certificate is configured to expire after 48 hours and be rotated 25 hours before then, this will warn that the issuer certificate is not valid for at least 60 days. Again, this warning [can be safely ignored](https://github.com/linkerd/website/issues/1342)
-1. Finally [add your services](https://linkerd.io/2.14/tasks/adding-your-service/) to the Linkerd mesh
+1. Once everything is installed, follow the remaining steps in the [automatically rotating control plane TLS credentials](https://linkerd.io/2-edge/tasks/automatically-rotating-control-plane-tls-credentials/#7-check-everything-that-cert-manager-did) documentation and learn what is required when the trust anchor certificate gets rotated.
+1. Finally [add your services](https://linkerd.io/2-edge/tasks/adding-your-service/) to the Linkerd mesh
 1. Optionally, you may wish to install the viz extension for observability and visualisation of the Linkerd service mesh:
    ```sh
    linkerd viz install | kubectl apply -f -
@@ -87,9 +145,9 @@ As per the [Linkerd documentation](https://linkerd.io/2.14/features/automatic-mt
 
 ### Upgrades
 
-Upgrading the CLI is as simple as [running the install command](https://linkerd.io/2.14/getting-started/#step-1-install-the-cli) again.
+Upgrading the CLI is as simple as [running the install command](https://linkerd.io/2-edge/getting-started/#step-1-install-the-cli) again.
 
-To [upgrade the Linkerd control plane](https://linkerd.io/2.14/tasks/upgrade/#with-the-linkerd-cli), use the `linkerd upgrade` command:
+To [upgrade the Linkerd control plane](https://linkerd.io/2-edge/tasks/upgrade/#with-the-linkerd-cli), use the `linkerd upgrade` command:
 
 ```bash
 linkerd upgrade --crds | kubectl apply -f -

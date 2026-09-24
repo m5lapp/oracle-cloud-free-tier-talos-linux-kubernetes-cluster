@@ -22,7 +22,7 @@ export TALOS_NODE="10.0.1.2"
 export TALOS_NODE="10.0.1.12,10.0.1.13"
 
 export TALOS_SCHEMATIC_ID="613e1592b2da41ae5e265e8789429f22e121aab91cb4deb6bc3c0b6262961245"
-export TALSO_NEW_VERSION="1.13.9"
+export TALOS_NEW_VERSION="1.13.9"
 
 # First, for the control plane nodes, use the --force flag to bypass the
 # etcd quorum check.
