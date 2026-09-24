@@ -3,9 +3,9 @@ resource "null_resource" "machine_config" {
     interpreter = ["/usr/bin/env", "bash", "-c"]
     # Alternatively, use a container image from https://github.com/siderolabs/talos/pkgs/container/talosctl/
     command = <<EOT
-      export CONFIG_PATCH_FILE="${path.module}/patches/config-patch.yaml"
-      export CONFIG_PATCH_CONTROL_PLANE_FILE="${path.module}/patches/config-patch-control-plane.yaml"
-      export CONFIG_PATCH_WORKER_FILE="${path.module}/patches/config-patch-worker.yaml"
+      export CONFIG_PATCH_FILE="${path.module}/patches/pre/all.yaml"
+      export CONFIG_PATCH_CONTROL_PLANE_FILE="${path.module}/patches/pre/control-plane.yaml"
+      export CONFIG_PATCH_WORKER_FILE="${path.module}/patches/pre/workers.yaml"
       export CONFIG_PATCH_FLAGS=""
 
       if test -f $${CONFIG_PATCH_FILE} && test -s $${CONFIG_PATCH_FILE}; then
@@ -51,9 +51,9 @@ resource "null_resource" "machine_config" {
 
   triggers = {
     patch_files = sha256(join("", [
-      fileexists("${path.module}/patches/config-patch.yaml") ? filesha256("${path.module}/patches/config-patch.yaml") : "",
-      fileexists("${path.module}/patches/config-patch-control-plane.yaml") ? filesha256("${path.module}/patches/config-patch-control-plane.yaml") : "",
-      fileexists("${path.module}/patches/config-patch-worker.yaml") ? filesha256("${path.module}/patches/config-patch-worker.yaml") : "",
+      fileexists("${path.module}/patches/pre/all.yaml") ? filesha256("${path.module}/patches/pre/all.yaml") : "",
+      fileexists("${path.module}/patches/pre/control-plane.yaml") ? filesha256("${path.module}/patches/pre/control-plane.yaml") : "",
+      fileexists("${path.module}/patches/pre/workers.yaml") ? filesha256("${path.module}/patches/pre/workers.yaml") : "",
     ]))
     talos_version = var.talos_version
   }
@@ -225,12 +225,83 @@ resource "oci_network_load_balancer_backend" "add_instance_worker_to_nlb_backend
   target_id                = each.value.instance_id
 }
 
-resource "null_resource" "bootstrap_cluster" {
+resource "null_resource" "apply_node_patches" {
   depends_on = [
     oci_core_instance.talos_instance_control_plane,
     oci_core_instance.talos_instance_worker,
     oci_network_load_balancer_backend.add_instance_to_nlb_backend_set_talosctl,
   ]
+  for_each = merge(
+    {
+      for index, instance in oci_core_instance.talos_instance_control_plane :
+      "control-plane-${index}" => instance
+    },
+    {
+      for index, instance in oci_core_instance.talos_instance_worker :
+      "worker-${index}" => instance
+    },
+  )
+
+  provisioner "local-exec" {
+    interpreter = ["/usr/bin/env", "bash", "-c"]
+    command     = <<EOT
+      case "${each.key}" in
+          worker-*)
+              PATCH_GROUP="workers"
+              ;;
+          *)
+              PATCH_GROUP="control-plane"
+              ;;
+      esac
+      export PATCH_ALL_FILE="${path.module}/patches/post/all.yaml"
+      export PATCH_GROUP_FILE="${path.module}/patches/post/$${PATCH_GROUP}.yaml"
+      export PATCH_NODE_FILE="${path.module}/patches/post/${each.key}.yaml"
+      export PATCH_FLAGS=""
+
+      if test -f "$${PATCH_ALL_FILE}" && test -s "$${PATCH_ALL_FILE}"; then
+          PATCH_FLAGS="$${PATCH_FLAGS} --patch @$${PATCH_ALL_FILE} "
+      fi
+      if test -f "$${PATCH_GROUP_FILE}" && test -s "$${PATCH_GROUP_FILE}"; then
+          PATCH_FLAGS="$${PATCH_FLAGS} --patch @$${PATCH_GROUP_FILE} "
+      fi
+      if test -f "$${PATCH_NODE_FILE}" && test -s "$${PATCH_NODE_FILE}"; then
+          PATCH_FLAGS="$${PATCH_FLAGS} --patch @$${PATCH_NODE_FILE} "
+      fi
+
+      echo "PATCH_FLAGS: $${PATCH_FLAGS}"
+
+      if test ! -z "$${PATCH_FLAGS}"; then
+          for i in $(seq 60); do
+              export MACHINE_STATUS=$(
+                  talosctl --talosconfig ${path.module}/config/talosconfig \
+                      get machinestatus \
+                      --endpoints ${var.nlb_public_ip} \
+                      --nodes ${each.value.private_ip} \
+                      --output jsonpath='{.spec.stage}'
+              )
+
+              if echo "$${MACHINE_STATUS}" | grep -E '^(booting|running)$'; then
+                  talosctl --talosconfig ${path.module}/config/talosconfig \
+                      patch machineconfig \
+                      --endpoints ${var.nlb_public_ip} \
+                      --nodes ${each.value.private_ip} \
+                      --mode no-reboot \
+                      $${PATCH_FLAGS}
+                  exit $${?}
+              fi
+
+              sleep 5
+          done
+
+          echo "Node ${each.value.private_ip} failed to enter running state."
+          exit 1
+      fi
+    EOT
+  }
+}
+
+resource "null_resource" "bootstrap_cluster" {
+  depends_on = [null_resource.apply_node_patches]
 
   provisioner "local-exec" {
     interpreter = ["/usr/bin/env", "bash", "-c"]
@@ -248,10 +319,12 @@ resource "null_resource" "bootstrap_cluster" {
     EOT
   }
 
+  # Bootstrap the Kubernetes cluster once the first control plane node is up.
   provisioner "local-exec" {
     interpreter = ["/usr/bin/env", "bash", "-c"]
     command     = <<EOT
-      talosctl --talosconfig ${path.module}/config/talosconfig bootstrap \
+      talosctl --talosconfig ${path.module}/config/talosconfig \
+          bootstrap \
           --nodes ${oci_core_instance.talos_instance_control_plane[0].private_ip}
     EOT
   }

@@ -147,7 +147,7 @@ variable "subnet_public_cidr" {
 variable "talos_version" {
   type        = string
   description = "The version of Talos Linux to install. It's recommended to pin this to avoid future version bumps in this project causing issues"
-  default     = "1.13.7"
+  default     = "1.14.1"
 }
 
 # Instances using the VM.Standard.E2.1.Micro shape can only be created in a
