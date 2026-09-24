@@ -11,5 +11,6 @@
 certs/
 compute/config/
 compute/images/
-compute/patches/
+compute/patches/post/
+compute/patches/pre/
 

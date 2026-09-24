@@ -31,7 +31,7 @@ To generate images suitable for running on particular hardware configurations an
 The default images used in this project are created via Image Factory with the following options selected:
 
  - **Hardware Type:** Cloud Server
- - **Talos Linux Version:** 1.13.7
+ - **Talos Linux Version:** 1.14.1
  - **Cloud:** Oracle Cloud
  - **Machine Architecture:** amd64/arm64
  - **System Extensions:**
@@ -44,8 +44,8 @@ The schematic includes the `siderolabs/iscsi-tools` and `siderolabs/util-linux-t
 
 Every variation of the image schematic that gets created is identified by a consistent **schematic ID** (hash) that does not change across Talos versions. The images that this configuration uses are as follows, though you can provide your own schematic ID via the `image_factory_url_hash_control_plane` and `image_factory_url_hash_worker` Terraform variables described further down if you prefer to use one customised to your own needs.
 
- - [https://factory.talos.dev/image/613e1592b2da41ae5e265e8789429f22e121aab91cb4deb6bc3c0b6262961245/v1.13.7/oracle-amd64.qcow2]
- - [https://factory.talos.dev/image/613e1592b2da41ae5e265e8789429f22e121aab91cb4deb6bc3c0b6262961245/v1.13.7/oracle-arm64.qcow2]
+ - [https://factory.talos.dev/image/613e1592b2da41ae5e265e8789429f22e121aab91cb4deb6bc3c0b6262961245/v1.14.1/oracle-amd64.qcow2]
+ - [https://factory.talos.dev/image/613e1592b2da41ae5e265e8789429f22e121aab91cb4deb6bc3c0b6262961245/v1.14.1/oracle-arm64.qcow2]
 
 ## Configuration
 
@@ -93,7 +93,7 @@ export TF_VAR_user_ocid="<USER_OICD>"
 | `rfc1918_cidr_block`         | No  | `10.0.0.0/16` | The RFC 1918 private IP address space to use for VCN |
 | `subnet_private_cidr`        | No  | `10.0.1.0/24` | The IP subnet within the rfc1918_cidr_block to use for the private subnet |
 | `subnet_public_cidr`         | No  | `10.0.0.0/24` | The IP subnet within the rfc1918_cidr_block to use for the public subnet |
-| `talos_version`              | No  | `1.13.7`      | The version of Talos Linux to install. It's recommended to pin this to avoid future version bumps in this project causing issues |
+| `talos_version`              | No  | `1.14.1`      | The version of Talos Linux to install. It's recommended to pin this to avoid future version bumps in this project causing issues |
 | `tenancy_ocid`               | Yes | N/A           | The OCI tenancy OCID |
 | `user_ocid`                  | Yes | N/A           | The OCI user OCID |
 | `worker_availability_domain` | No  | `2`           | The availability domain number into which workers should be placed |
@@ -101,17 +101,27 @@ export TF_VAR_user_ocid="<USER_OICD>"
 
 ### Talos Machine Config Patching
 
-Each node in a Talos Linux cluster is configured using a [machine config](https://docs.siderolabs.com/talos/v1.13/reference/configuration/v1alpha1/config) file which is a collection of YAML-based configuration snippets that get merged together to form the final configuration bundle. When the Terraform is run, it will generate a default control plane and a worker machine config for you using the `talosctl gen config` command; these will be created at `compute/config/control-plane.yaml` and `compute/config/worker.yaml` respectively. The MachineConfig YAML specification/schema is versioned and the latest v1alpha1 version is defined [here](https://docs.siderolabs.com/talos/v1.13/reference/configuration/v1alpha1/config).
+Each node in a Talos Linux cluster is configured using a [machine config](https://docs.siderolabs.com/talos/v1.14/reference/configuration/v1alpha1/config) file which is a collection of YAML-based configuration snippets that get merged together to form the final configuration bundle. When the Terraform is run, it will generate a control plane and a worker machine config for you using the `talosctl gen config` command; these will be created at `compute/config/controlplane.yaml` and `compute/config/worker.yaml` respectively. The MachineConfig YAML specification/schema is versioned and the latest v1alpha1 version is defined [here](https://docs.siderolabs.com/talos/v1.14/reference/configuration/v1alpha1/config).
 
-These two configuration files contain sane defaults for bootstrapping a working cluster. You are encouraged to review these two files to get an understanding of how the cluster is being configured, however, you should not modify these files directly. Instead, you should create a patch file in one of the following locations depending on whether you want the patch to apply to all nodes, just the control plane nodes or just the worker nodes respectively. None of these patch files are required to be created, but you can equally create all of them if you need to or just a subset, it entirely depends on your needs and any missing ones will be silently ignored.
+These two configuration files contain sane defaults for bootstrapping a working cluster. You are encouraged to review these two files to get an understanding of how the cluster is being configured, however, you should not modify these files directly. Instead, you should create a patch file in one of the following locations depending on whether you want the patch to apply to all nodes, just the control plane nodes or just the worker nodes respectively. None of these patch files are required to be created, but you can equally create all of them if you need to or just a subset, it entirely depends on your needs and any missing ones will be silently ignored. These patches will then be applied to the two machine config files when they get created.
 
- * `compute/patches/config-patch.yaml`
- * `compute/patches/config-patch-control-plane.yaml`
- * `compute/patches/config-patch-worker.yaml`
+ * `compute/patches/pre/all.yaml`
+ * `compute/patches/pre/control-plane.yaml`
+ * `compute/patches/pre/workers.yaml`
 
-Talos [supports patching](https://docs.siderolabs.com/talos/v1.13/configure-your-talos-cluster/system-configuration/patching) using **strategic merge patches**, these are minimal YAML documents that contain the minimum amount of information to a) indicate which part of the MachineConfig is being targeted and b) what the expected updated values should be. If you have ever used [overlays in Kustomize](https://github.com/kubernetes-sigs/kustomize#2-create-variants-using-overlays) to patch base YAML documents, then this pattern will be familiar to you. Multiple documents can be provided in each file using YAML's `---` document separator.
+There are some configuration options such as the hostname or some Kubelet configuration options that cannot be applied until after the node has been created or that you only want to apply to a single, specific node. For these situations, you can also add configuration patches to any of the following patch files. If you have more than two control plane or worker nodes, then you can reference them each as `0` to `N-1`.
 
-There are two ways to define a strategic merge patch in Talos. Many configuration subsystems can be targeted using named documents which are YAML resource kinds (specifications) for specific groups of related configuration such as [ExtensionServiceConfig](https://docs.siderolabs.com/talos/v1.13/reference/configuration/extensions/extensionserviceconfig) for configuring Talos system extensions, [RegistryMirrorConfig](https://docs.siderolabs.com/talos/v1.13/reference/configuration/cri/registrymirrorconfig) for configuring a container registry mirror to use or [HostnameConfig](https://docs.siderolabs.com/talos/v1.13/reference/configuration/network/hostnameconfig) for configuring the nodes' hostnames, for example:
+ * `compute/patches/post/all.yaml`
+ * `compute/patches/post/control-plane.yaml`
+ * `compute/patches/post/control-plane-0.yaml`
+ * `compute/patches/post/control-plane-1.yaml`
+ * `compute/patches/post/workers.yaml`
+ * `compute/patches/post/worker-0.yaml`
+ * `compute/patches/post/worker-1.yaml`
+
+Talos [supports patching](https://docs.siderolabs.com/talos/v1.14/configure-your-talos-cluster/system-configuration/patching) using **strategic merge patches**, these are minimal YAML documents that contain the minimum amount of information to a) indicate which part of the MachineConfig is being targeted and b) what the expected updated values should be. If you have ever used [overlays in Kustomize](https://github.com/kubernetes-sigs/kustomize#2-create-variants-using-overlays) to patch base YAML documents, then this pattern will be familiar to you. Multiple documents can be provided in each file using YAML's `---` document separator.
+
+There are two ways to define a strategic merge patch in Talos. Many configuration subsystems can be targeted using named documents which are YAML resource kinds (specifications) for specific groups of related configuration such as [ExtensionServiceConfig](https://docs.siderolabs.com/talos/v1.14/reference/configuration/extensions/extensionserviceconfig) for configuring Talos system extensions, [RegistryMirrorConfig](https://docs.siderolabs.com/talos/v1.14/reference/configuration/cri/registrymirrorconfig) for configuring a container registry mirror to use or [HostnameConfig](https://docs.siderolabs.com/talos/v1.14/reference/configuration/network/hostnameconfig) for configuring the nodes' hostnames, for example:
 
 ```yaml
 apiVersion: v1alpha1
@@ -119,7 +129,7 @@ kind: HostnameConfig
 auto: stable
 ```
 
-These documents are all well documented at their respective links where you can discover which other document kinds are available too. Each document has a `kind`, `apiVersion` and sometimes a `name` field (which internally gets mapped to the resource's `.metadata.name` field after apply), Talos uses all of these to determine where to merge, patch or append the specified resource. Refer to the [patching documentation](https://docs.siderolabs.com/talos/v1.13/configure-your-talos-cluster/system-configuration/patching) for more details.
+These documents are all well documented at their respective links where you can discover which other document kinds are available too. Each document has a `kind`, `apiVersion` and sometimes a `name` field (which internally gets mapped to the resource's `.metadata.name` field after apply), Talos uses all of these to determine where to merge, patch or append the specified resource. Refer to the [patching documentation](https://docs.siderolabs.com/talos/v1.14/configure-your-talos-cluster/system-configuration/patching) for more details.
 
 Alternatively, if no corresponding resource exists for what you would like to patch, you can provide a minimal MachineConfig with just the updated/additional configuration required such as this config which will add an `extraMount` for Longhorn to store data on each node:
 
@@ -140,24 +150,49 @@ Additionally, JSON patches can be provided as [**RFC6902 JSON patches**](https:/
 
 #### Suggested Machine Config Patches
 
-##### Allow Workloads to Run on Control Plane Nodes
+##### Hostname
 
-By default, the control plane nodes are tainted to prevent regular workloads from being scheduled on them in order to provide isolation to the control plane components. However, as the two worker nodes that the OCI free tier allows are very under-powered compared to the two control plane nodes, you will probably want to remove this taint by adding the following to the `compute/patches/config-patch.yaml` file.
+When the Talos nodes are first created, they will each be given a hostname from the cloud provider's (OCI) metadata which always take precedence over any `HostnameConfig` setting in the machine config. Therefore, if you want to give the node a stable hostname, for example `talos-7b4-nil` or `talos-i5z-5k2`, then you should add the following to `compute/patches/post/all.yaml`.
 
 ```yaml
-# Do not taint the control plane nodes so that we can run workloads on them.
-cluster:
-  allowSchedulingOnControlPlanes: true
+apiVersion: v1alpha1
+kind: HostnameConfig
+auto: stable
 ```
 
-Conversely, you may want to create the worker nodes with a label/taint pair that prevent non-DaemonSet workloads from being scheduled on them. This is because the worker nodes in the free tier are very low resourced and so a lot of workloads can overwhelm the nodes and cause them to become unresponsive. To avoid this, we can use a nodeAffinity so that we only schedule workloads that we know will not cause issues as shown below. To achieve this, add the following YAML snippet (replace example.com with your own domain) to the `compute/patches/config-patch-worker.yaml` file.
+Alternatively, you can add the following config patch to the file `compute/patches/post/control-plane-0.yaml` to set the hostname of the first control plane node to `control-plane-0.example.com`.
 
 ```yaml
-machine:
-  nodeLabels:
-    node-restriction.example.com/low-resource: "true"
-  nodeTaints:
-    node-restriction.example.com/low-resource: "true:PreferNoSchedule"
+apiVersion: v1alpha1
+kind: HostnameConfig
+auto: off
+hostname: control-plane-0.example.com
+```
+
+##### Allow Workloads to Run on Control Plane Nodes
+
+By default, the control plane nodes are tainted to prevent regular workloads from being scheduled on them in order to provide isolation to the control plane components. However, as the two worker nodes that the OCI free tier allows are very under-powered compared to the two control plane nodes, you will probably want to remove this taint by adding the following to the `compute/patches/post/control-plane.yaml` file. The reason this needs to be added in the `compute/patches/post/` directory as the taint does not exist before the instance is created and therefore cannot be deleted at that point.
+
+```yaml
+---
+# Do not taint the control plane nodes so that we can run workloads on them.
+apiVersion: v1alpha1
+kind: KubeNodeConfig
+taints:
+  node-role.kubernetes.io/control-plane:
+    $patch: delete
+```
+
+Conversely, you may want to create the worker nodes with a label/taint pair that prevent non-DaemonSet workloads from being scheduled on them. This is because the worker nodes in the free tier are very low resourced and so a lot of workloads can overwhelm the nodes and cause them to become unresponsive. To avoid this, we can use a nodeAffinity so that we only schedule workloads that we know will not cause issues as shown below. To achieve this, add the following YAML snippet to the `compute/patches/pre/workers.yaml` file.
+
+```yaml
+---
+apiVersion: v1alpha1
+kind: KubeNodeConfig
+labels:
+  node-restriction.kubernetes.io/low-resource: "true"
+taints:
+  node-restriction.kubernetes.io/low-resource: "true:PreferNoSchedule"
 ```
 
 If you do wish to then run a workload on these tainted worker nodes, you must give the workload the following node affinity:
@@ -170,29 +205,11 @@ spec:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
         - matchExpressions:
-          - key: node-restriction.example.com/low-resource
+          - key: node-restriction.kubernetes.io/low-resource
             operator: In
             values:
             - "true"
 ...
-```
-
-##### Longhorn
-
-If you plan to run Longhorn on your cluster, then as per the [Longhorn documentation](https://longhorn.io/docs/1.9.0/advanced-resources/os-distro-specific/talos-linux-support/#data-path-mounts), you will need to add the following configuration to the `compute/patches/config-patch.yaml` file in order to provide access to the local storage on the host.
-
-```yaml
-machine:
-  # https://longhorn.io/docs/archives/1.10.2/advanced-resources/os-distro-specific/talos-linux-support/#data-path-mounts
-  kubelet:
-    extraMounts:
-    - destination: /var/lib/longhorn
-      type: bind
-      source: /var/lib/longhorn
-      options:
-      - bind
-      - rshared
-      - rw
 ```
 
 ## Deployment
@@ -212,7 +229,7 @@ terraform apply .tfplan
 
 Note that it's very common to receive the error `Error: 500-InternalError, Out of host capacity` when trying to provision the two 12GB Ampere control plane nodes. This is because there is very rarely free capacity in the Oracle data centres that is available for use by free-tier customers. If you see this message, then you either have to wait and try again later, or you might want to try forcing both of the control plane instances into a specific availability domain which has capacity for them, or reducing the amount of RAM requested in `compute/locals.tf`. Alternatively, you can upgrade to a PAYG plan which gives you a higher priority when provisioning compute resources.
 
-After around ten minutes, the OCI network and compute instances will have been created and be up and running. Your new cluster can then be administered using the talosctl and kubectl config files as follows:
+After around fifteen minutes, the OCI network and compute instances will have been created and be up and running. Your new cluster can then be administered using the talosctl and kubectl config files as follows:
 
 ```bash
 # Check the state of your cluster's nodes.
